@@ -26,7 +26,13 @@ jobs:
         run: |
           IMG=ghcr.io/${GITHUB_REPOSITORY,,}
           SHA=$(grep -oP '^ARG COMFY_SHA=\K[0-9a-f]+' Dockerfile | cut -c1-7)
-          docker build -t "$IMG:latest" -t "$IMG:comfy-$SHA" .
+          set +e
+          docker build --progress=plain -t "$IMG:latest" -t "$IMG:comfy-$SHA" . > build.log 2>&1
+          rc=$?
+          set -e
+          # สรุปผลเป็นหมายเหตุของงาน (อ่านได้จากภายนอกโดยไม่ต้องเปิดบันทึกเต็ม)
+          grep -E "torch==|torch [0-9]|cuda" build.log | tail -6 | sed ':a;N;$!ba;s/\n/%0A/g' | sed 's/^/::notice title=torch::/'
+          if [ $rc -ne 0 ]; then echo "::error title=build failed::$(tail -40 build.log | sed ':a;N;$!ba;s/\n/%0A/g')"; exit 1; fi
           docker push "$IMG:latest"
           docker push "$IMG:comfy-$SHA"
           docker image inspect "$IMG:latest" --format '{{.Size}}' | awk '{printf "image size %.1f GB\n", $1/1e9}'
