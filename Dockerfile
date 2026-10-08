@@ -9,7 +9,12 @@ RUN git init -q /opt/ComfyUI \
  && git -C /opt/ComfyUI remote add origin https://github.com/Comfy-Org/ComfyUI \
  && git -C /opt/ComfyUI fetch -q --depth 1 origin "$COMFY_SHA" \
  && git -C /opt/ComfyUI checkout -q -f FETCH_HEAD
+# ล็อก torch ของก้อนเดิม (CUDA 13.0) ไว้ ห้ามส่วนประกอบอื่นเปลี่ยน · ตรวจซ้ำว่ายังเป็น CUDA 13.0 ไม่ใช่ = สร้างไม่ผ่าน
 RUN python3 -m pip install -q --no-cache-dir uv \
+ && python3 -m pip freeze | grep -iE '^(torch|torchvision|torchaudio)==' > /tmp/keep-torch.txt \
+ && cat /tmp/keep-torch.txt \
  && python3 -m uv pip install --python "$(command -v python3)" --system --break-system-packages --no-cache \
-      -r /opt/ComfyUI/requirements.txt aiohttp huggingface_hub hf_xet \
- && python3 -c "import torch, comfy_kitchen, av, aiohttp, huggingface_hub; print('torch', torch.__version__, torch.version.cuda)"
+      -c /tmp/keep-torch.txt -r /opt/ComfyUI/requirements.txt aiohttp huggingface_hub hf_xet \
+ && python3 -c "import torch, comfy_kitchen, av, aiohttp, huggingface_hub; assert torch.version.cuda.startswith('13.0'), torch.version.cuda; print('torch', torch.__version__, 'cuda', torch.version.cuda)"
+# บันทึกสิ่งที่ติดตั้ง (อ่านได้จากภายนอกเพื่อตรวจ)
+RUN { echo "comfy $(git -C /opt/ComfyUI rev-parse HEAD)"; python3 -c "import torch;print('torch', torch.__version__, torch.version.cuda)"; python3 -m pip freeze; } > /opt/sf69-build.txt
