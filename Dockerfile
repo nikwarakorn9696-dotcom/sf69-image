@@ -9,12 +9,17 @@ RUN git init -q /opt/ComfyUI \
  && git -C /opt/ComfyUI remote add origin https://github.com/Comfy-Org/ComfyUI \
  && git -C /opt/ComfyUI fetch -q --depth 1 origin "$COMFY_SHA" \
  && git -C /opt/ComfyUI checkout -q -f FETCH_HEAD
-# ล็อก torch ของก้อนเดิม (CUDA 13.0) ไว้ ห้ามส่วนประกอบอื่นเปลี่ยน · ตรวจซ้ำว่ายังเป็น CUDA 13.0 ไม่ใช่ = สร้างไม่ผ่าน
+# ล็อก torch ของก้อนเดิม (CUDA 13.0) · torchvision/torchaudio ต้องเป็นรุ่น cu130 คู่กับ torch เท่านั้น (รุ่นทั่วไปจาก PyPI ทำ ComfyUI เปิดไม่ขึ้น)
 RUN python3 -m pip install -q --no-cache-dir uv \
- && python3 -c "import importlib.metadata as m, sys; [print(p + '==' + m.version(p)) for p in ('torch', 'torchvision', 'torchaudio') if any(d.metadata['Name'].lower() == p for d in m.distributions())]" > /tmp/keep-torch.txt \
+ && TV=$(python3 -c "import torch; print(torch.__version__)") \
+ && echo "base torch $TV" \
+ && printf 'torch==%s\ntorchvision==0.24.1+cu130\ntorchaudio==2.9.1+cu130\n' "$TV" > /tmp/keep-torch.txt \
  && cat /tmp/keep-torch.txt \
  && python3 -m uv pip install --python "$(command -v python3)" --system --break-system-packages --no-cache \
-      -c /tmp/keep-torch.txt -r /opt/ComfyUI/requirements.txt aiohttp huggingface_hub hf_xet \
- && python3 -c "import torch, comfy_kitchen, av, aiohttp, huggingface_hub; assert torch.version.cuda.startswith('13.0'), torch.version.cuda; print('torch', torch.__version__, 'cuda', torch.version.cuda)"
+      --extra-index-url https://download.pytorch.org/whl/cu130 --index-strategy unsafe-best-match \
+      -c /tmp/keep-torch.txt torchvision torchaudio -r /opt/ComfyUI/requirements.txt aiohttp huggingface_hub hf_xet \
+ && python3 -c "import torch, torchvision, torchaudio, comfy_kitchen, av, aiohttp, huggingface_hub; assert torch.version.cuda.startswith('13.0'), torch.version.cuda; print('torch', torch.__version__, 'vision', torchvision.__version__, 'audio', torchaudio.__version__, 'cuda', torch.version.cuda)"
+# ตรวจว่า ComfyUI เปิดได้จริง (โหลดทุกส่วนแล้วปิด) ไม่ผ่าน = สร้างไม่ผ่าน ไม่ปล่อยก้อนเสียออกไป
+RUN bash -c 'set -o pipefail; cd /opt/ComfyUI && python3 main.py --quick-test-for-ci --cpu 2>&1 | tail -15'
 # บันทึกสิ่งที่ติดตั้ง (อ่านได้จากภายนอกเพื่อตรวจ)
-RUN { echo "comfy $(git -C /opt/ComfyUI rev-parse HEAD)"; python3 -c "import torch;print('torch', torch.__version__, torch.version.cuda)"; python3 -m pip freeze; } > /opt/sf69-build.txt
+RUN { echo "comfy $(git -C /opt/ComfyUI rev-parse HEAD)"; python3 -c "import torch, torchvision;print('torch', torch.__version__, torch.version.cuda, 'vision', torchvision.__version__)"; python3 -m pip freeze; } > /opt/sf69-build.txt
